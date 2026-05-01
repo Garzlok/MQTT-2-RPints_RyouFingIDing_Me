@@ -4,6 +4,10 @@ Dual YF-S201 Style Flow Meters, DS18B20 OneWire, and MFRC522 RFID
 MQTT Integration with RaspberryPints
 Special Thanks to Homebrewtalk.com Members RandR+ and Thorrak who made this sketch possible!
 This sketch is brought to you by coders like them!
+**WARNING** This sketch attaches the RFID RST Pin to D3 (GPIO0) Which is the FLASH Pin
+DO NOT HAVE the RFID RST connected to D3 when flashing this sketch (it WILL NOT Flash)
+When uploading the sketch has been completed, you can attach the RST to D3.
+This is not an issue during Boot, Only when Flashing! **WARNING**
 */
 
 #include <PubSubClient.h>
@@ -24,6 +28,7 @@ void pulseCounter2();                                                           
 const char* mqtt_topic = "rpints/pours";                                                // Add this line at the top
 void sendTemp(float temp, const char* probe, const char* unit, const char* timestamp);  // Add this line at the top
 char* getTimestamp();                                                                   // Add this line at the top
+String RFIDTag;                                                                         // Add this line at the top
 
 // WiFi Settings
 const char* ssid = "SSID"; 
@@ -38,6 +43,8 @@ const char* mqtt_pass = "MQTT_PW";
 // RFID Settings
 #define SS_PIN D8
 #define RST_PIN D3
+unsigned long lastRfidCheckTime = 0;
+unsigned int rfidCheckDelay = 250;
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // Flow Sensor 1
@@ -112,30 +119,37 @@ void loop() {
   }
   client.loop();
 
+  unsigned long now = millis();
+  if((now - lastRfidCheckTime) > rfidCheckDelay || lastRfidCheckTime == 0){
+
     // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
- if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
-    return;
+	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
+
+		  // Save the UID on a String variable
+		  String RFIDTag = "";
+		  for (byte i = 0; i < mfrc522.uid.size; i++) {
+			RFIDTag += String(mfrc522.uid.uidByte[i]);
+		  }
+
+		  // calculate BCC
+		  byte bcc = 0;
+		  for (byte i = 0; i < mfrc522.uid.size; i++) {
+			bcc ^= mfrc522.uid.uidByte[i];
+		}
+		  
+		  if (bcc < 0x10) RFIDTag += "0";
+		  RFIDTag += String(bcc);
+
+		  RFIDTag.toUpperCase();
+
+      // Pass the UID string to a function
+      //RFIDCardAction(RFIDTag);
+
+		  // Halt communication with the card
+		  mfrc522.PICC_HaltA();
+	  }
+	  lastRfidCheckTime = now;
   }
-
-  // Save the UID on a String variable
-  String RFIDTag = "";
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    RFIDTag += String(mfrc522.uid.uidByte[i]);
-  }
-
-  // calculate BCC
-  byte bcc = 0;
-  for (byte i = 0; i < mfrc522.uid.size; i++) {
-    bcc ^= mfrc522.uid.uidByte[i];
-}
-  
-  if (bcc < 0x10) RFIDTag += "0";
-  RFIDTag += String(bcc);
-
-  RFIDTag.toUpperCase();
-
-  // Halt communication with the card
-  mfrc522.PICC_HaltA();
 
   // Check flow activity periodically: accumulate pulses during a pour,
   // then publish the total once flow has stopped for POUR_TIMEOUT ms.
