@@ -91,12 +91,14 @@ void setup() {
 
   // RFID
   SPI.begin();
-  mfrc522.PCD_Init();                                 // Init MFRC522 board.
+  mfrc522.PCD_Init();
+  Serial.println("RFID Reader Ready");                                 // Init MFRC522 board.
   
-  //OneWire
+  // OneWire
   DS18B20.begin();  // initialize the DS18B20 sensor
   configTime(TZstr, "pool.ntp.org", "time.nist.gov"); //POSIX Timezone String to accomodate for daylight savings
 
+  // Flow Meters
   pinMode(flowPin1, INPUT_PULLUP);
   pinMode(flowPin2, INPUT_PULLUP);
 
@@ -110,17 +112,26 @@ void loop() {
   }
   client.loop();
 
-  // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
-  if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
+    // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
+ if ( ! mfrc522.PICC_IsNewCardPresent() || ! mfrc522.PICC_ReadCardSerial() ) {
     return;
   }
 
   // Save the UID on a String variable
   String RFIDTag = "";
   for (byte i = 0; i < mfrc522.uid.size; i++) {
-    RFIDTag += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-    RFIDTag += String(mfrc522.uid.uidByte[i], HEX);
+    RFIDTag += String(mfrc522.uid.uidByte[i]);
   }
+
+  // calculate BCC
+  byte bcc = 0;
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    bcc ^= mfrc522.uid.uidByte[i];
+}
+  
+  if (bcc < 0x10) RFIDTag += "0";
+  RFIDTag += String(bcc);
+
   RFIDTag.toUpperCase();
 
   // Halt communication with the card
