@@ -28,7 +28,6 @@ void pulseCounter2();                                                           
 const char* mqtt_topic = "rpints/pours";                                                // Add this line at the top
 void sendTemp(float temp, const char* probe, const char* unit, const char* timestamp);  // Add this line at the top
 char* getTimestamp();                                                                   // Add this line at the top
-String RFIDTag;                                                                         // Add this line at the top
 
 // WiFi Settings
 const char* ssid = "SSID"; 
@@ -114,6 +113,8 @@ void setup() {
 }
 
 void loop() {
+  String RFIDTag = "";
+
   if (!client.connected()) {
     reconnect();
   }
@@ -126,7 +127,6 @@ void loop() {
 	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
 
 		  // Save the UID on a String variable
-		  String RFIDTag = "";
 		  for (byte i = 0; i < mfrc522.uid.size; i++) {
 			RFIDTag += String(mfrc522.uid.uidByte[i]);
 		  }
@@ -174,7 +174,7 @@ void loop() {
     } else if (pouring1 && (now - lastPulseTime1 > POUR_TIMEOUT)) {
       if (pourPulses1 >= MIN_POUR_PULSES) {
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber1, pourPulses1, RFIDTag);
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber1, pourPulses1, RFIDTag.c_str());
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
@@ -202,7 +202,7 @@ void loop() {
     } else if (pouring2 && (now - lastPulseTime2 > POUR_TIMEOUT)) {
       if (pourPulses2 >= MIN_POUR_PULSES) {
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber2, pourPulses2, RFIDTag);
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber2, pourPulses2, RFIDTag.c_str());
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
