@@ -1,4 +1,4 @@
-*
+/*
 NodeMCU (ESP8266)
 Dual YF-S201 Style Flow Meters, DS18B20 OneWire, and MFRC522 RFID
 MQTT Integration with RaspberryPints
@@ -28,12 +28,12 @@ void pulseCounter2();                                                           
 const char* mqtt_topic = "rpints/pours";                                                // Add this line at the top
 void sendTemp(float temp, const char* probe, const char* unit, const char* timestamp);  // Add this line at the top
 char* getTimestamp();                                                                   // Add this line at the top
-void RFIDCardAction(String RFIDTag);                                                    // Add this line at the top
+void RFIDCardAction(char* RFIDTag);                                                     // Add this line at the top
 void RFIDCheckFunction();                                                               // Add this line at the top
 
 // WiFi Settings
 const char* ssid = "SSID"; 
-const char* password = "SSID_PM";
+const char* password = "SSID_PW";
 
 // MQTT Settings
 const char* mqtt_server = "raspberrypints.local";  // If your RaspberryPints has a static IP, you can use the IP address.
@@ -46,6 +46,7 @@ const char* mqtt_pass = "MQTT_PW";
 #define RST_PIN D3
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
+char RFIDTag[16];
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // Flow Sensor 1
@@ -61,7 +62,7 @@ volatile unsigned long pulseCount2 = 0;
 // Pour tracking
 const unsigned long POUR_TIMEOUT = 2000;    // ms of no flow before pour is considered done
 const unsigned long CHECK_INTERVAL = 100;   // how often to check for flow activity
-const unsigned long MIN_POUR_PULSES = 20;   // minimum pulses to count as a real pour (noise filter)
+const unsigned long MIN_POUR_PULSES = 15;   // minimum pulses to count as a real pour (noise filter)
 
 bool pouring1 = false;
 unsigned long pourPulses1 = 0;
@@ -115,7 +116,6 @@ void setup() {
 }
 
 void loop() {
-  String RFIDTag = "";
 
   if (!client.connected()) {
     reconnect();
@@ -242,9 +242,9 @@ void RFIDCheckFunction() {
 	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
 
 		  // Save the UID on a String variable
-		  String RFIDTag = "";
+		  String tempRFIDTag = "";
 		  for (byte i = 0; i < mfrc522.uid.size; i++) {
-			RFIDTag += String(mfrc522.uid.uidByte[i]);
+			tempRFIDTag += String(mfrc522.uid.uidByte[i]);
 		  }
 
 		  // calculate BCC
@@ -253,10 +253,11 @@ void RFIDCheckFunction() {
 			bcc ^= mfrc522.uid.uidByte[i];
 		}
 		  
-		  if (bcc < 0x10) RFIDTag += "0";
-		  RFIDTag += String(bcc);
+		  if (bcc < 0x10) tempRFIDTag += "0";
+		  tempRFIDTag += String(bcc);
 
-		  RFIDTag.toUpperCase();
+		  tempRFIDTag.toUpperCase();
+      tempRFIDTag.toCharArray(RFIDTag, 16);  // Put into buffer
 
       // Pass the UID string to a function
       RFIDCardAction(RFIDTag);
@@ -266,9 +267,9 @@ void RFIDCheckFunction() {
 	  }
 }
 
-// Function to print UID to see the card info
-void RFIDCardAction(String RFIDTag) {
-  Serial.print("Processing UID: ");
+// Function to print buffer UID
+void RFIDCardAction(char* RFIDTag) {
+  Serial.print("Processing UID Buffer: ");
   Serial.println(RFIDTag);
 }
 
