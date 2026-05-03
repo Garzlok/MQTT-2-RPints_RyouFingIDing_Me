@@ -1,4 +1,4 @@
-/*
+*
 NodeMCU (ESP8266)
 Dual YF-S201 Style Flow Meters, DS18B20 OneWire, and MFRC522 RFID
 MQTT Integration with RaspberryPints
@@ -28,10 +28,12 @@ void pulseCounter2();                                                           
 const char* mqtt_topic = "rpints/pours";                                                // Add this line at the top
 void sendTemp(float temp, const char* probe, const char* unit, const char* timestamp);  // Add this line at the top
 char* getTimestamp();                                                                   // Add this line at the top
+void RFIDCardAction(String RFIDTag);                                                    // Add this line at the top
+void RFIDCheckFunction();                                                               // Add this line at the top
 
 // WiFi Settings
 const char* ssid = "SSID"; 
-const char* password = "SSID_PW";
+const char* password = "SSID_PM";
 
 // MQTT Settings
 const char* mqtt_server = "raspberrypints.local";  // If your RaspberryPints has a static IP, you can use the IP address.
@@ -47,12 +49,12 @@ unsigned int rfidCheckDelay = 250;
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // Flow Sensor 1
-const int flowPin1 = D0;   // Avoid using D3, D4, and D8
+const int flowPin1 = D1;   // Avoid using D0
 const int tapNumber1 = 4;  // Change for each tap. If running an Arduino through Serial or USB in conjunction with MQTT, Do not make this a pin number already used.
 volatile unsigned long pulseCount1 = 0;
 
 // Flow Sensor 2
-const int flowPin2 = D1;   // Avoid using D3. D4, and D8
+const int flowPin2 = D2;   // Avoid using D0
 const int tapNumber2 = 6;  // Change for each tap. If running an Arduino through Serial or USB in conjunction with MQTT, Do not make this a pin number already used.
 volatile unsigned long pulseCount2 = 0;
 
@@ -72,7 +74,7 @@ unsigned long lastPulseTime2 = 0;
 unsigned long lastCheckTime = 0;
 
 // OneWire Settings
-#define SENSOR_PIN D2                               // The ESP8266 pin connected to DS18B20 sensor's DQ pin
+#define SENSOR_PIN D4                               // The ESP8266 pin connected to DS18B20 sensor's DQ pin
 const char* TZstr = "EST+5EDT,M3.2.0/2,M11.1.0/2";  //read putting TZ offset in configTime is problematic
 
 OneWire oneWire(SENSOR_PIN);
@@ -122,34 +124,9 @@ void loop() {
 
   unsigned long now = millis();
   if((now - lastRfidCheckTime) > rfidCheckDelay || lastRfidCheckTime == 0){
-
-    // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
-	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
-
-		  // Save the UID on a String variable
-		  for (byte i = 0; i < mfrc522.uid.size; i++) {
-			RFIDTag += String(mfrc522.uid.uidByte[i]);
-		  }
-
-		  // calculate BCC
-		  byte bcc = 0;
-		  for (byte i = 0; i < mfrc522.uid.size; i++) {
-			bcc ^= mfrc522.uid.uidByte[i];
-		}
-		  
-		  if (bcc < 0x10) RFIDTag += "0";
-		  RFIDTag += String(bcc);
-
-		  RFIDTag.toUpperCase();
-
-      // Pass the UID string to a function
-      //RFIDCardAction(RFIDTag);
-
-		  // Halt communication with the card
-		  mfrc522.PICC_HaltA();
-	  }
-	  lastRfidCheckTime = now;
-  }
+    RFIDCheckFunction();
+    lastRfidCheckTime = now;
+  }   
 
   // Check flow activity periodically: accumulate pulses during a pour,
   // then publish the total once flow has stopped for POUR_TIMEOUT ms.
@@ -174,7 +151,7 @@ void loop() {
     } else if (pouring1 && (now - lastPulseTime1 > POUR_TIMEOUT)) {
       if (pourPulses1 >= MIN_POUR_PULSES) {
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber1, pourPulses1, RFIDTag.c_str());
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber1, pourPulses1, RFIDTag);
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
@@ -202,7 +179,7 @@ void loop() {
     } else if (pouring2 && (now - lastPulseTime2 > POUR_TIMEOUT)) {
       if (pourPulses2 >= MIN_POUR_PULSES) {
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber2, pourPulses2, RFIDTag.c_str());
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber2, pourPulses2, RFIDTag);
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
@@ -258,6 +235,41 @@ void ICACHE_RAM_ATTR pulseCounter1() {
 
 void ICACHE_RAM_ATTR pulseCounter2() {
   pulseCount2++;
+}
+
+// Function to Read RFID Card and create string variable
+void RFIDCheckFunction() {
+	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
+
+		  // Save the UID on a String variable
+		  String RFIDTag = "";
+		  for (byte i = 0; i < mfrc522.uid.size; i++) {
+			RFIDTag += String(mfrc522.uid.uidByte[i]);
+		  }
+
+		  // calculate BCC
+		  byte bcc = 0;
+		  for (byte i = 0; i < mfrc522.uid.size; i++) {
+			bcc ^= mfrc522.uid.uidByte[i];
+		}
+		  
+		  if (bcc < 0x10) RFIDTag += "0";
+		  RFIDTag += String(bcc);
+
+		  RFIDTag.toUpperCase();
+
+      // Pass the UID string to a function
+      RFIDCardAction(RFIDTag);
+
+		  // Halt communication with the card
+		  mfrc522.PICC_HaltA();
+	  }
+}
+
+// Function to print UID to see the card info
+void RFIDCardAction(String RFIDTag) {
+  Serial.print("Processing UID: ");
+  Serial.println(RFIDTag);
 }
 
 void reconnect() {
