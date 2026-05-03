@@ -1,18 +1,7 @@
-/*
-NodeMCU (ESP8266)
-MFRC522 RFID Only
-For Eventual MQTT Integration with RaspberryPints
-
-**WARNING** This sketch attaches the RFID RST Pin to D3 (GPIO0) Which is the FLASH Pin
-DO NOT HAVE the RFID RST connected to D3 when flashing this sketch (it WILL NOT Flash)
-When uploading the sketch has been completed, you can attach the RST to D3.
-This is not an issue during Boot, Only when Flashing! **WARNING**
-*/
-
 #include <MFRC522.h>
 #include <SPI.h>
 
-void RFIDCardAction(String uid);
+void RFIDCardAction(char* RFIDTag);
 void RFIDCheckFunction();
 
 // RFID Settings
@@ -20,6 +9,7 @@ void RFIDCheckFunction();
 #define RST_PIN D3
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
+char RFIDTag[16];
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 void setup() {
@@ -44,9 +34,9 @@ void RFIDCheckFunction() {
 	 if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
 
 		  // Save the UID on a String variable
-		  String RFIDTag = "";
+		  String tempRFIDTag = "";
 		  for (byte i = 0; i < mfrc522.uid.size; i++) {
-			RFIDTag += String(mfrc522.uid.uidByte[i]);
+			tempRFIDTag += String(mfrc522.uid.uidByte[i]);
 		  }
 
 		  // calculate BCC
@@ -55,12 +45,13 @@ void RFIDCheckFunction() {
 			bcc ^= mfrc522.uid.uidByte[i];
 		}
 		  
-		  if (bcc < 0x10) RFIDTag += "0";
-		  RFIDTag += String(bcc);
+		  if (bcc < 0x10) tempRFIDTag += "0";
+		  tempRFIDTag += String(bcc);
 
-		  RFIDTag.toUpperCase();
+		  tempRFIDTag.toUpperCase();
+      tempRFIDTag.toCharArray(RFIDTag, 16);  // Put into buffer
 
-      // Pass the UID string to a function
+      // Pass the buffer to a function
       RFIDCardAction(RFIDTag);
 
 		  // Halt communication with the card
@@ -68,15 +59,8 @@ void RFIDCheckFunction() {
 	  }
 }
 
-
-// Function to print UID to see if we have the right card
-void RFIDCardAction(String uid) {
-  Serial.print("Processing UID: ");
-  Serial.println(uid);
-  
-  if (uid == "22724858213244") { // Replace with your actual UID
-    Serial.println("Access Granted");
-  } else {
-    Serial.println("Access Denied");
-  }
+// Function to print Buffer UID
+void RFIDCardAction(char* RFIDTag) {
+  Serial.print("Processing UID Buffer: ");
+  Serial.println(RFIDTag);
 }
