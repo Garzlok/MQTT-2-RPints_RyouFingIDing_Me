@@ -66,6 +66,8 @@ volatile unsigned long pulseCount2 = 0;
 const unsigned long POUR_TIMEOUT = 2000;    // ms of no flow before pour is considered done
 const unsigned long CHECK_INTERVAL = 100;   // how often to check for flow activity
 const unsigned long MIN_POUR_PULSES = 15;   // minimum pulses to count as a real pour (noise filter)
+bool isNoTag = (strlen(RFIDTag) == 0 || RFIDTag[0] == ' ' || strcmp(RFIDTag, "0") == 0);
+const char* tagIDStatus = isNoTag ? "-1" : "";
 
 bool pouring1 = false;
 unsigned long pourPulses1 = 0;
@@ -134,6 +136,10 @@ void loop() {
   // Pass the buffer to a function
   RFIDCardAction(RFIDTag);
 
+  if (strlen(RFIDTag) > 0) {
+      tagIDStatus = "";
+  }
+
   // Check flow activity periodically: accumulate pulses during a pour,
   // then publish the total once flow has stopped for POUR_TIMEOUT ms.
   if (millis() - lastCheckTime > CHECK_INTERVAL) {
@@ -156,8 +162,22 @@ void loop() {
       }
     } else if (pouring1 && (now - lastPulseTime1 > POUR_TIMEOUT)) {
       if (pourPulses1 >= MIN_POUR_PULSES) {
+
+      // If it's NOT alphanumeric, we assume no valid tag is present.
+      bool isNoTag = true; 
+      if (strlen(RFIDTag) > 0) {
+        if (isAlphaNumeric(RFIDTag[0])) {
+          isNoTag = false;
+        }
+      }
+
+      // Special case: if the tag is just "0", treat as no tag
+      if (strcmp(RFIDTag, "0") == 0) isNoTag = true;
+
+      const char* tagIDStatus = isNoTag ? "-1" : "";
+
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber1, pourPulses1, RFIDTag);
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", tagIDStatus, tapNumber1, pourPulses1, RFIDTag);
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
@@ -184,8 +204,22 @@ void loop() {
       }
     } else if (pouring2 && (now - lastPulseTime2 > POUR_TIMEOUT)) {
       if (pourPulses2 >= MIN_POUR_PULSES) {
+
+      // If it's NOT alphanumeric, we assume no valid tag is present.
+      bool isNoTag = true; 
+      if (strlen(RFIDTag) > 0) {
+        if (isAlphaNumeric(RFIDTag[0])) {
+          isNoTag = false;
+        }
+      }
+
+      // Special case: if the tag is just "0", treat as no tag
+      if (strcmp(RFIDTag, "0") == 0) isNoTag = true;
+
+      const char* tagIDStatus = isNoTag ? "-1" : "";
+
         char payload[100];
-        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", "", tapNumber2, pourPulses2, RFIDTag);
+        snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", tagIDStatus, tapNumber2, pourPulses2, RFIDTag);
         client.publish("rpints/pours", payload);
         Serial.print("Sent: ");
         Serial.println(payload);
