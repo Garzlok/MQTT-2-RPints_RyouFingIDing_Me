@@ -46,8 +46,10 @@ const char* mqtt_pass = "MQTT_PW";
 #define RST_PIN D3
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
-unsigned int lastRfidReadTime = -1;
+unsigned long lastRfidReadTime;
 char RFIDTag[16];
+bool tagIsActive = false;
+bool messagePrinted = false;
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // Flow Sensor 1
@@ -128,6 +130,9 @@ void loop() {
     RFIDCheckFunction();
     lastRfidCheckTime = now;
   }   
+
+  // Pass the buffer to a function
+  RFIDCardAction(RFIDTag);
 
   // Check flow activity periodically: accumulate pulses during a pour,
   // then publish the total once flow has stopped for POUR_TIMEOUT ms.
@@ -260,25 +265,32 @@ void RFIDCheckFunction() {
 		  tempRFIDTag.toUpperCase();
       tempRFIDTag.toCharArray(RFIDTag, 16);  // Put into buffer
 
-      // Pass the UID string to a function
-      RFIDCardAction(RFIDTag);
+      tagIsActive = true;
+      messagePrinted = false;
+      lastRfidReadTime = millis();
 
 		  // Halt communication with the card
 		  mfrc522.PICC_HaltA();
 	  }
 }
 
-// Function to print buffer UID and zero RFIDTag memory
+// Function to print buffer UID and when RFID memory is cleared
 void RFIDCardAction(char* RFIDTag) {
-  Serial.print("Processing UID Buffer: ");
-  Serial.println(RFIDTag);
-  unsigned long now = millis();
-	  if(lastRfidReadTime > -1 && (now - lastRfidReadTime) > 30000){
-  
-  char RFIDTag[16];
-  std::memset(RFIDTag, 0, sizeof(RFIDTag));
-
-  lastRfidReadTime = -1;
+  if (tagIsActive) {
+    
+    // Check if 30 seconds have passed
+    if (millis() - lastRfidReadTime >= 30000) {
+      memset(RFIDTag, 0, 16);
+      tagIsActive = false;
+      messagePrinted = false;
+      Serial.println("Tag memory cleared.");
+    } 
+    else if (!messagePrinted) {
+      // Optional: Only print this if you want to see the tag while it's active
+      Serial.print("Processing UID Buffer: ");
+      Serial.println(RFIDTag);
+      messagePrinted = true;
+    }
   }
 }
 
@@ -356,3 +368,4 @@ void sendTemp(float temp, const char* probe, const char* unit, const char* times
 
    client.publish(mqtt_topic, payload);
 }
+
