@@ -9,7 +9,10 @@ void RFIDCheckFunction();
 #define RST_PIN D3
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
+unsigned long lastRfidReadTime;
 char RFIDTag[16];
+bool tagIsActive = false;
+bool messagePrinted = false;
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 void setup() {
@@ -27,6 +30,9 @@ void loop() {
     RFIDCheckFunction();
 	  lastRfidCheckTime = now;
   }
+ 
+  // Pass the buffer to a function
+  RFIDCardAction(RFIDTag);
 }
 
 // Function to Read RFID Card and create string variable
@@ -51,8 +57,9 @@ void RFIDCheckFunction() {
 		  tempRFIDTag.toUpperCase();
       tempRFIDTag.toCharArray(RFIDTag, 16);  // Put into buffer
 
-      // Pass the buffer to a function
-      RFIDCardAction(RFIDTag);
+      tagIsActive = true;
+      messagePrinted = false;
+      lastRfidReadTime = millis();
 
 		  // Halt communication with the card
 		  mfrc522.PICC_HaltA();
@@ -61,6 +68,22 @@ void RFIDCheckFunction() {
 
 // Function to print Buffer UID
 void RFIDCardAction(char* RFIDTag) {
-  Serial.print("Processing UID Buffer: ");
-  Serial.println(RFIDTag);
+
+  // Only print if there is an active tag to process
+  if (tagIsActive) {
+    
+    // Check if 30 seconds have passed
+    if (millis() - lastRfidReadTime >= 30000) {
+      memset(RFIDTag, 0, 16);
+      tagIsActive = false;
+      messagePrinted = false;
+      Serial.println("Tag memory cleared.");
+    } 
+    else if (!messagePrinted) {
+      // Optional: Only print this if you want to see the tag while it's active
+      Serial.print("Processing UID Buffer: ");
+      Serial.println(RFIDTag);
+      messagePrinted = true;
+    }
+  }
 }
