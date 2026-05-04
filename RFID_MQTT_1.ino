@@ -46,6 +46,7 @@ const char* mqtt_pass = "MQTT_PW";
 #define RST_PIN D3
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
+unsigned int lastRfidReadTime = -1;
 char RFIDTag[16];
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
@@ -267,10 +268,18 @@ void RFIDCheckFunction() {
 	  }
 }
 
-// Function to print buffer UID
+// Function to print buffer UID and zero RFIDTag memory
 void RFIDCardAction(char* RFIDTag) {
   Serial.print("Processing UID Buffer: ");
   Serial.println(RFIDTag);
+  unsigned long now = millis();
+	  if(lastRfidReadTime > -1 && (now - lastRfidReadTime) > 30000){
+  
+  char RFIDTag[16];
+  std::memset(RFIDTag, 0, sizeof(RFIDTag));
+
+  lastRfidReadTime = -1;
+  }
 }
 
 void reconnect() {
@@ -328,7 +337,6 @@ char* getTimestamp(){
 
     time(&timer);
     timeinfo = localtime(&timer);
-
 
     strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", timeinfo);
     return(buffer);
