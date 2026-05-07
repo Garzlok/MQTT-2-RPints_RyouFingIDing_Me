@@ -37,7 +37,7 @@ const char* password = "SSID_PW";
 const char* mqtt_server = "raspberrypints.local";  		  // If your RaspberryPints has a static IP, you can use the IP address here.
 const int mqtt_port = 1883;
 const char* mqtt_user = "RaspberryPints";                 // If you change the MQTT Broker User name, make sure you add that name here.
-const char* mqtt_pass = "MQYY_PW";                 // Your MQTT Broker PW.
+const char* mqtt_pass = "MQTT_PW";                        // Your MQTT Broker PW.
 const char* mqtt_topic = "rpints/pours"; 
 
 // RFID Settings
