@@ -4,10 +4,8 @@ Dual YF-S201 Style Flow Meters, DS18B20 OneWire, and MFRC522 RFID
 MQTT Integration with RaspberryPints
 Special Thanks to Homebrewtalk.com Members RandR+ and Thorrak who made this sketch possible!
 This sketch is brought to you by coders like them!
-**WARNING** This sketch attaches the RFID RST Pin to D3 (GPIO0) Which is the FLASH Pin
-DO NOT HAVE the RFID RST connected to D3 when flashing this sketch (it WILL NOT Flash)
-When uploading the sketch has been completed, you can attach the RST to D3.
-This is not an issue during Boot, Only when Flashing! **WARNING**
+OneWire is on D0. Some have reported that D0 and OneWire have compatability issues. Thus far,
+those have not manifested on this sketch.
 */
 
 #include <PubSubClient.h>
@@ -34,15 +32,15 @@ const char* ssid = "SSID";
 const char* password = "SSID_PW";
 
 // MQTT Settings
-const char* mqtt_server = "raspberrypints.local";  		  // If your RaspberryPints has a static IP, you can use the IP address here.
+const char* mqtt_server = "raspberrypints.local";         // If your RaspberryPints has a static IP, you can use the IP address here.
 const int mqtt_port = 1883;
 const char* mqtt_user = "RaspberryPints";                 // If you change the MQTT Broker User name, make sure you add that name here.
-const char* mqtt_pass = "MQTT_PW";                        // Your MQTT Broker PW.
+const char* mqtt_pass = "MQTT_PW";                 		  // Your MQTT Broker PW.
 const char* mqtt_topic = "rpints/pours"; 
 
 // RFID Settings
 #define SS_PIN D8
-#define RST_PIN D3
+#define RST_PIN D4
 unsigned long lastRfidCheckTime = 0;
 unsigned int rfidCheckDelay = 250;
 unsigned long lastRfidReadTime;
@@ -52,12 +50,12 @@ bool messagePrinted = false;
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // Flow Sensor 1
-const int flowPin1 = D1;                 // Avoid using D0
+const int flowPin1 = D1;                 // Avoid using D3
 const int tapNumber1 = 4;                // Change for each tap. If running an Arduino through Serial or USB in conjunction with MQTT, Do not make this a pin number already used.
 volatile unsigned long pulseCount1 = 0;
 
 // Flow Sensor 2
-const int flowPin2 = D2;                 // Avoid using D0
+const int flowPin2 = D2;                 // Avoid using D3
 const int tapNumber2 = 6;                // Change for each tap. If running an Arduino through Serial or USB in conjunction with MQTT, Do not make this a pin number already used.
 volatile unsigned long pulseCount2 = 0;
 
@@ -74,8 +72,8 @@ unsigned long lastPulseTime2 = 0;
 unsigned long lastCheckTime = 0;
 
 // OneWire Settings
-#define SENSOR_PIN D4                                 // The ESP8266 pin connected to DS18B20 sensor's DQ pin
-const char* TZstr = "EST+5EDT,M3.2.0/2,M11.1.0/2";    // TZ offset set for EST and Daylight Savings (POSIX Timezone String)
+#define SENSOR_PIN D0                                 // The ESP8266 pin connected to DS18B20 sensor's DQ pin
+const char* TZstr = "EST+5EDT,M3.2.0/2,M11.1.0/2";    // TZ offset set for EST and Daylight SAvings (POSIX Timezone String)
 OneWire oneWire(SENSOR_PIN);
 DallasTemperature DS18B20(&oneWire);
 float temperature_C;                                  // temperature in Celsius
@@ -92,6 +90,7 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
   
+  delay(1000);
   SPI.begin();
   mfrc522.PCD_Init();                                         // Initialize MFRC522 Board
   Serial.println("RFID Reader Ready"); 
@@ -122,19 +121,17 @@ void loop() {
 
   unsigned long now = millis();
 
-  // RFID scan interval
-  if((now - lastRfidCheckTime) > rfidCheckDelay || lastRfidCheckTime == 0){
+  // 1. RFID scan interval
+  if ((now - lastRfidCheckTime) > rfidCheckDelay || lastRfidCheckTime == 0) {
     RFIDCheckFunction();
     lastRfidCheckTime = now;
-  } 
+  }
 
-  //Pass the buffer to a function
+  // 2. Process Tag Buffer & Timeout logic
   RFIDCardAction(RFIDTag);
 
-  // Periodically process flow activity
+  // 3. Flow activity & MQTT Reporting
   if (now - lastCheckTime > CHECK_INTERVAL) {
-    
-    // Protect variables modified inside interrupts
     noInterrupts();
     unsigned long count1 = pulseCount1;
     pulseCount1 = 0;
@@ -142,8 +139,8 @@ void loop() {
     pulseCount2 = 0;
     interrupts();
 
-    // Determine tag status safely inside scope
-    bool isNoTag = true; 
+    // Determine tag status safely
+    bool isNoTag = true;
     if (strlen(RFIDTag) > 0 && isAlphaNumeric(RFIDTag[0])) {
       isNoTag = false;
     }
@@ -162,11 +159,17 @@ void loop() {
       if (pourPulses1 >= MIN_POUR_PULSES) {
         char payload[100];
         snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", activeTagStatus, tapNumber1, pourPulses1, RFIDTag);
-        if(client.connected()) client.publish(mqtt_topic, payload);
+        if (client.connected()) client.publish(mqtt_topic, payload);
         Serial.printf("Sent: %s\n", payload);
       } else {
-        Serial.printf("Tap %d: discarded noise (%lu pulses)\n", tapNumber1, pourPulses1);
+        Serial.printf("Tap %d: discarded noise\n", tapNumber1);
       }
+      
+      // Reset hardware immediately after ANY pour attempt
+      delay(100); 
+      mfrc522.PCD_Init(); 
+      memset(RFIDTag, 0, 16);
+      tagIsActive = false;
       pouring1 = false;
       pourPulses1 = 0;
     }
@@ -183,24 +186,30 @@ void loop() {
       if (pourPulses2 >= MIN_POUR_PULSES) {
         char payload[100];
         snprintf(payload, sizeof(payload), "P;%s;%d;%lu;%s", activeTagStatus, tapNumber2, pourPulses2, RFIDTag);
-        if(client.connected()) client.publish(mqtt_topic, payload);
+        if (client.connected()) client.publish(mqtt_topic, payload);
         Serial.printf("Sent: %s\n", payload);
       } else {
-        Serial.printf("Tap %d: discarded noise (%lu pulses)\n", tapNumber2, pourPulses2);
+        Serial.printf("Tap %d: discarded noise\n", tapNumber2);
       }
+      
+      // Reset hardware immediately after ANY pour attempt
+      delay(100);
+      mfrc522.PCD_Init();
+      memset(RFIDTag, 0, 16);
+      tagIsActive = false;
       pouring2 = false;
       pourPulses2 = 0;
     }
     lastCheckTime = now;
   }
 
-  // Temperature tracking
-  if (now - tempTime > 900000 || tempTime == 0) { 					// Change time in milliseconds to your needs
-    DS18B20.requestTemperatures(); 
-    temperature_C = DS18B20.getTempCByIndex(0); 
+  // 4. Temperature tracking (every 15 mins)
+  if (now - tempTime > 900000 || tempTime == 0) {
+    DS18B20.requestTemperatures();
+    temperature_C = DS18B20.getTempCByIndex(0);
     if (temperature_C != DEVICE_DISCONNECTED_C) {
-      temperature_F = temperature_C * 9 / 5 + 32; 
-      sendTemp(temperature_F, probeName, "F", getTimestamp()); 
+      temperature_F = temperature_C * 9 / 5 + 32;
+      sendTemp(temperature_F, probeName, "F", getTimestamp());
       Serial.printf("Temperature: %.2f°F\n", temperature_F);
     }
     tempTime = now;
@@ -244,7 +253,7 @@ void RFIDCheckFunction() {
 
 void RFIDCardAction(char* RFIDTag) {
   if (tagIsActive) {
-    if (millis() - lastRfidReadTime >= 30000) {
+    if (millis() - lastRfidReadTime >= 45000) {
       memset(RFIDTag, 0, 16);
       tagIsActive = false;
       messagePrinted = false;
